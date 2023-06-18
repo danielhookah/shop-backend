@@ -26,16 +26,13 @@ const getUserById = async (req, res) => {
 
 const updateUser = async (req, res) => {
     const { id } = req.params;
-    const { name, email, password, role } = req.body;
+    const { username } = req.body;
     try {
         const user = await User.findByPk(id);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-        user.name = name;
-        user.email = email;
-        user.password = password;
-        user.role = role;
+        user.username = username;
         await user.save();
         res.json(user);
     } catch (error) {
