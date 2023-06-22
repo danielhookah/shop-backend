@@ -5,10 +5,15 @@ const cors = require('cors');
 const db = require('../config/dbConfig');
 
 const app = express();
+const cookieParser = require('cookie-parser');
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+    origin: ["http://localhost:3001"],
+    credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 async function connectToDatabase() {
     try {
@@ -26,6 +31,7 @@ const userRoutes = require('./routes/user');
 const productRoutes = require('./routes/product');
 const categoryRoutes = require('./routes/category');
 const authRoutes = require('./routes/auth');
+
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/categories', categoryRoutes);

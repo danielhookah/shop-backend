@@ -30,16 +30,10 @@ const User = sequelize.define('User', {
         allowNull: false,
         defaultValue: 'active',
     },
-    token: {
-        type: DataTypes.STRING,
-        allowNull: true,
-    },
 });
 
 User.beforeCreate(async (user) => {
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(user.password, saltRounds);
-    user.password = hashedPassword;
+    user.password = user.password && user.password !== "" ? bcrypt.hashSync(user.password, 10) : "";
 });
 
 module.exports = User;

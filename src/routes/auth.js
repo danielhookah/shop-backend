@@ -6,6 +6,6 @@ const { protectRoute } = require("../middlewares/auth");
 router.post('/register', AuthController.registerUser);
 router.post('/login', AuthController.loginUser);
 router.post('/logout', protectRoute, AuthController.logoutUser);
-router.post('/refresh-token', protectRoute, AuthController.refreshToken);
+router.post('/refresh-token', AuthController.refreshToken);
 
 module.exports = router;
