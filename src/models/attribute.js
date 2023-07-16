@@ -1,7 +1,8 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const db = require('../../config/dbConfig');
+const Category = require("./category");
 
-const Category = db.define('Category', {
+const Attribute = db.define('Attribute', {
     id: {
         type: DataTypes.UUID,
         defaultValue: Sequelize.UUIDV4,
@@ -11,6 +12,15 @@ const Category = db.define('Category', {
         type: DataTypes.STRING,
         allowNull: false,
     },
+    value: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
 });
 
-module.exports = Category;
+Attribute.belongsTo(Category, {
+    foreignKey: 'categoryId'
+});
+Category.hasMany(Attribute);
+
+module.exports = Attribute;

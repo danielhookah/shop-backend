@@ -1,13 +1,14 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, Sequelize} = require('sequelize');
 const sequelize = require('../../config/dbConfig');
 const User = require('./user');
 const Category = require('./category');
+const Attribute = require('./attribute');
 
 const Product = sequelize.define('Product', {
     id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.UUID,
+        defaultValue: Sequelize.UUIDV4,
         primaryKey: true,
-        autoIncrement: true,
     },
     name: {
         type: DataTypes.STRING,
@@ -29,13 +30,52 @@ const Product = sequelize.define('Product', {
         type: DataTypes.ARRAY(DataTypes.STRING),
         allowNull: true,
     },
+    userId: {
+        field: 'userId',
+        type: DataTypes.INTEGER
+    },
+    categoryId: {
+        field: 'categoryId',
+        type: DataTypes.UUID
+    }
 });
 
-// Associations
-Product.belongsToMany(Category, { through: 'ProductCategory' });
-Category.belongsToMany(Product, { through: 'ProductCategory' });
+Product.belongsTo(Category, {
+    foreignKey: 'categoryId',
+    as: "CategoryId"
+});
+Category.hasMany(Product, {
+    foreignKey: 'categoryId',
+    as: "CategoryId"
+});
 
-User.hasMany(Product);
-Product.belongsTo(User);
+Product.belongsTo(User, {
+    foreignKey: 'userId',
+    as: 'UserId'
+});
+User.hasMany(Product, {
+    foreignKey: 'userId',
+    as: 'UserId'
+});
 
-module.exports = Product;
+const ProductAttribute = sequelize.define('ProductAttribute', {
+    ProductId: {
+        type: DataTypes.INTEGER,
+        references: {
+            model: Product,
+            key: 'id'
+        }
+    },
+    AttributeId: {
+        type: DataTypes.INTEGER,
+        references: {
+            model: Attribute,
+            key: 'id'
+        }
+    }
+});
+
+Product.belongsToMany(Attribute, { through: ProductAttribute, as: "attributes" });
+Attribute.belongsToMany(Product, { through: ProductAttribute, as: "attributes" });
+
+module.exports = Product

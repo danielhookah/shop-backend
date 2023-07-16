@@ -1,138 +1,175 @@
 const Product = require('../models/product');
 const User = require('../models/user');
 const Category = require('../models/category');
-const fs = require('fs');
-const { deleteImage } = require("../services/upload");
+const Attribute = require('../models/attribute');
+const {deleteImage} = require("../services/upload");
 
 const getAllProducts = async (req, res) => {
     try {
-        const products = await Product.findAll({
-            include: [
-                { model: User, as: 'user', attributes: ['id', 'name', 'email'] },
-                { model: Category, as: 'categories', through: { attributes: [] } },
-            ],
-        });
+        const where = req.query.categoryId ? {categoryId: req.query.categoryId} : {}
+        const include = (req.query?.attributes && req.query?.attributes.length > 0)
+            ? [{
+                model: Attribute,
+                as: 'attributes',
+                attributes: ["id", "name", "value"],
+                require: true,
+                where: {id: req.query.attributes}
+            }]
+            : []
+
+        const products = await Product.findAll({where, include});
         res.json(products);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server Error' });
+        res.status(500).json({message: 'Server Error'});
     }
 };
 
 const getProductById = async (req, res) => {
-    const { id } = req.params;
+    const {id} = req.params;
     try {
         const product = await Product.findByPk(id, {
             include: [
-                { model: User, as: 'user', attributes: ['id', 'name', 'email'] },
-                { model: Category, as: 'categories', through: { attributes: [] } },
+                {model: Attribute, as: "attributes", through: {attributes: []}},
             ],
         });
         if (!product) {
-            return res.status(404).json({ message: 'Product not found' });
+            return res.status(404).json({message: 'Product not found'});
         }
         res.json(product);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server Error' });
+        res.status(500).json({message: 'Server Error'});
     }
 };
 
 const createProduct = async (req, res) => {
-    const { name, price, userId, categoryIds } = req.body;
+    const {
+        name,
+        description,
+        availableCount,
+        price,
+        attribute,
+        categoryId
+    } = req.body;
     try {
-        const user = await User.findByPk(userId);
+        const user = await User.findByPk(req.userId);
         if (!user) {
-            return res.status(404).json({ message: 'User not found' });
+            return res.status(401).json({message: 'User not found'});
         }
-        const categories = await Category.findAll({ where: { id: categoryIds } });
 
-        // Check if image files are present in the request
         if (req.files && req.files.length > 0) {
-            const imagePaths = req.files.map((file) => file.path);
-            // Include the imagePaths in the product creation
-            const product = await Product.create({ name, price, imagePaths });
-            await product.setUser(user);
-            await product.setCategories(categories);
-            res.status(201).json(product);
+            const filepath = (process.env.NODE_ENV === 'production' ? 'https://' : 'http://') + req.headers.host + '/public/uploads/'
+            const imageUrls = req.files.map((file) => filepath + file.filename);
+            const product = await Product.create({
+                name,
+                description,
+                availableCount,
+                price,
+                imageUrls,
+                categoryId,
+                userId: user.dataValues.id
+            }, {
+                include: [{model: User, as: 'UserId'}, {model: Category, as: 'CategoryId'}]
+            });
+            await product.setAttributes(attribute, {status: 'active'});
+            res.status(201).json({...product.dataValues, attributes: attribute});
         } else {
-            // If no image is uploaded, create the product without imagePaths
-            const product = await Product.create({ name, price });
-            await product.setUser(user);
-            await product.setCategories(categories);
+            const product = await Product.create({
+                name,
+                description,
+                availableCount,
+                price,
+                categoryId,
+                userId: user.dataValues.id
+            }, {
+                include: [{model: User, as: 'UserId'}, {model: Category, as: 'CategoryId'}]
+            });
             res.status(201).json(product);
         }
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server Error' });
+        res.status(500).json({message: 'Server Error'});
     }
 };
 
 const updateProduct = async (req, res) => {
-    const { id } = req.params;
-    const { name, description, availableCount, userId, categoryIds } = req.body;
+    const {id} = req.params;
+    const {
+        name,
+        description,
+        availableCount,
+        price,
+        attribute,
+        categoryId
+    } = req.body;
     try {
+        const user = await User.findByPk(req.userId);
+        if (!user) {
+            return res.status(401).json({message: 'User not found'});
+        }
+
         const product = await Product.findByPk(id);
         if (!product) {
-            return res.status(404).json({ message: 'Product not found' });
+            return res.status(404).json({message: 'Product not found'});
         }
-        if (userId && userId !== product.userId) {
-            return res.status(401).json({ message: 'Unauthorized' });
-        }
-        if (categoryIds) {
-            const categories = await Category.findAll({ where: { id: categoryIds } });
-            if (categories.length !== categoryIds.length) {
-                return res.status(404).json({ message: 'One or more categories not found' });
-            }
-            await product.setCategories(categories);
-        }
-        product.name = name || product.name;
-        product.description = description || product.description;
-        product.availableCount = availableCount || product.availableCount;
 
-        // Check if new image files are present in the request
-        if (req.files && req.files.length > 0) {
-            // Delete old image files
-            if (product.imagePaths && product.imagePaths.length > 0) {
-                for (const imagePath of product.imagePaths) {
-                    deleteImage(imagePath);
-                }
-            }
-            // Update the imagePaths with the new file paths
-            product.imagePaths = req.files.map((file) => file.path);
+        if (req.userId !== product.userId) {
+            return res.status(401).json({message: 'Unauthorized'});
         }
+
+        const imagesToDelete = product.dataValues?.imageUrls.filter(x => !req.body?.imageUrls?.includes(x)) || [];
+        const imagesToSave = req.body?.imageUrls?.filter(x => !imagesToDelete.includes(x)) || [];
+        imagesToDelete.forEach(el => {
+            deleteImage(el);
+        })
+
+        let imageUrls = []
+        if (req.files && req.files.length > 0) {
+            const filepath = (process.env.NODE_ENV === 'production' ? 'https://' : 'http://') + req.headers.host + '/public/uploads/'
+            imageUrls = req.files.map((file) => filepath + file.filename);
+        }
+
+        product.name = name
+        product.description = description
+        product.availableCount = availableCount
+        product.price = price
+        product.categoryId = categoryId
+        product.userId = user.dataValues.id
+        product.imageUrls = [...imageUrls, ...imagesToSave]
+        await product.setAttributes(attribute, {status: 'active'});
 
         await product.save();
-        res.json(product);
+
+        res.status(201).json({...product.dataValues, attributes: attribute});
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server Error' });
+        res.status(500).json({message: 'Server Error'});
     }
 };
 
 const deleteProduct = async (req, res) => {
-    const { id } = req.params;
+    const {id} = req.params;
     try {
         const product = await Product.findByPk(id);
         if (!product) {
-            return res.status(404).json({ message: 'Product not found' });
+            return res.status(404).json({message: 'Product not found'});
         }
         if (req.userId !== product.userId) {
-            return res.status(401).json({ message: 'Unauthorized' });
+            return res.status(401).json({message: 'Unauthorized'});
         }
 
-        // Delete image files
-        if (product.imagePaths && product.imagePaths.length > 0) {
-            for (const imagePath of product.imagePaths) {
-                deleteImage(imagePath);
+        if (product.imageUrls && product.imageUrls.length > 0) {
+            for (const imageURL of product.imageUrls) {
+                deleteImage(imageURL);
             }
         }
 
         await product.destroy();
-        res.json({ message: 'Product deleted successfully' });
+        res.json({message: 'Product deleted successfully'});
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server Error' });
+        res.status(500).json({message: 'Server Error'});
     }
 };
 
