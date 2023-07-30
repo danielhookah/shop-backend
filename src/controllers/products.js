@@ -15,7 +15,12 @@ const getAllProducts = async (req, res) => {
                 require: true,
                 where: {id: req.query.attributes}
             }]
-            : []
+            : [{
+                model: Attribute,
+                as: 'attributes',
+                attributes: ["id", "name", "value"],
+                require: true,
+            }]
 
         const products = await Product.findAll({where, include});
         res.json(products);
